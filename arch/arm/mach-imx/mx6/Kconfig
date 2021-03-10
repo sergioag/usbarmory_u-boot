@@ -599,6 +599,10 @@ config TARGET_UDOO_NEO
 	select SUPPORT_SPL
 	imply CMD_DM
 
+config TARGET_USBARMORY_MARK_TWO
+	bool "Support USB armory Mk II"
+	depends on MX6ULL
+
 config TARGET_SOFTING_VINING_2000
 	bool "Softing VIN|ING 2000"
 	depends on MX6SX
@@ -675,6 +679,7 @@ source "board/freescale/mx6sxsabreauto/Kconfig"
 source "board/freescale/mx6ul_14x14_evk/Kconfig"
 source "board/freescale/mx6ullevk/Kconfig"
 source "board/grinn/liteboard/Kconfig"
+source "board/inversepath/usbarmory-mark-two/Kconfig"
 source "board/phytec/pcm058/Kconfig"
 source "board/phytec/pcl063/Kconfig"
 source "board/gateworks/gw_ventana/Kconfig"

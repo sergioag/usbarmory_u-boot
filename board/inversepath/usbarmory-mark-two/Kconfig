@@ -1,0 +1,75 @@
+if TARGET_USBARMORY_MARK_TWO
+
+choice
+	prompt "DDR size"
+	default SYS_DDR_512MB
+
+config SYS_DDR_512MB
+	bool "512 MB"
+
+config SYS_DDR_1GB
+	bool "1 GB"
+
+endchoice
+
+choice
+	prompt "Boot device"
+	default SYS_BOOT_DEV_MICROSD
+
+config SYS_BOOT_DEV_MICROSD
+	bool "micro SD"
+
+config SYS_BOOT_DEV_EMMC
+	bool "eMMC"
+
+endchoice
+
+choice
+	prompt "Boot mode"
+	default SYS_BOOT_MODE_NORMAL
+
+config SYS_BOOT_MODE_NORMAL
+	select DISTRO_DEFAULTS
+	select ENV_IS_IN_MMC
+	bool "Normal"
+
+config SYS_BOOT_MODE_UMS
+	bool "UMS"
+	select ENV_IS_NOWHERE
+
+config SYS_BOOT_MODE_TFTP
+	bool "TFTP"
+	select ENV_IS_NOWHERE
+
+config SYS_BOOT_MODE_VERIFIED_OPEN
+	bool "Verified Boot"
+	select ENV_IS_NOWHERE
+
+config SYS_BOOT_MODE_VERIFIED_LOCKED
+	bool "Verified Boot and console disabled"
+	select ENV_IS_NOWHERE
+
+endchoice
+
+config IMX_CONFIG
+	default "board/inversepath/usbarmory-mark-two/imximage-512mb.cfg" if SYS_DDR_512MB
+	default "board/inversepath/usbarmory-mark-two/imximage-1gb.cfg" if SYS_DDR_1GB
+
+config SYS_MMC_ENV_DEV
+	default 0 if SYS_BOOT_DEV_MICROSD
+	default 1 if SYS_BOOT_DEV_EMMC
+
+config SYS_MEMTEST_END
+	default 0xa0000000 if SYS_DDR_512MB
+	default 0xc0000000 if SYS_DDR_1G
+
+config SYS_BOARD
+	default "usbarmory-mark-two"
+
+config SYS_VENDOR
+	default "inversepath"
+
+config SYS_CONFIG_NAME
+	default "usbarmory-mark-two"
+
+endif

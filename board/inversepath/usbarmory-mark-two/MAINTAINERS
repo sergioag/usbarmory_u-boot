@@ -1,0 +1,6 @@
+USBARMORY MK II BOARD
+M:	Andrej Rosano <andrej.rosano@withsecure.com>
+S:	Maintained
+F:	board/inversepath/usbarmory-mark-two/
+F:	include/configs/usbarmory-mark-two.h
+F:	configs/usbarmory-mark-two_defconfig

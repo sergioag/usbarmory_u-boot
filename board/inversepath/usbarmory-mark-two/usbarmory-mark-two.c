@@ -1,0 +1,353 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * USB armory Mk II board initialization
+ * https://github.com/usbarmory/usbarmory
+ *
+ * Copyright (C) 2019, WithSecure Corporation
+ * Andrej Rosano <andrej.rosano@withsecure.com>
+ */
+
+#include <common.h>
+#include <asm/io.h>
+#include <asm/arch/imx-regs.h>
+#include <asm/arch/sys_proto.h>
+#include <asm/arch/crm_regs.h>
+#include <asm/arch/clock.h>
+#include <asm/arch/iomux.h>
+#include <asm/arch/mx6-pins.h>
+#include <asm/mach-imx/iomux-v3.h>
+#include <asm/mach-imx/mxc_i2c.h>
+#include <linux/errno.h>
+#include <i2c.h>
+#include <mmc.h>
+#include <fsl_esdhc_imx.h>
+#include <asm/gpio.h>
+#include <net.h>
+
+DECLARE_GLOBAL_DATA_PTR;
+
+#define UART_PAD_CTRL  (PAD_CTL_PKE | PAD_CTL_PUE |		\
+	PAD_CTL_PUS_100K_UP | PAD_CTL_SPEED_MED |		\
+	PAD_CTL_DSE_40ohm   | PAD_CTL_SRE_FAST  | PAD_CTL_HYS)
+#define USDHC_PAD_CTRL (PAD_CTL_PKE | PAD_CTL_PUE |		\
+	PAD_CTL_PUS_22K_UP  | PAD_CTL_SPEED_LOW |		\
+	PAD_CTL_DSE_80ohm   | PAD_CTL_SRE_FAST  | PAD_CTL_HYS)
+#define I2C_PAD_CTRL	(PAD_CTL_PUS_100K_UP |			\
+	PAD_CTL_SPEED_MED | PAD_CTL_DSE_40ohm | PAD_CTL_HYS |	\
+	PAD_CTL_ODE | PAD_CTL_SRE_FAST)
+#define WEAK_PULLUP	(PAD_CTL_PUS_100K_UP ||			\
+	PAD_CTL_SPEED_MED | PAD_CTL_DSE_40ohm | PAD_CTL_HYS ||	\
+	PAD_CTL_SRE_SLOW)
+#define USDHC_PAD_CTRL (PAD_CTL_PKE | PAD_CTL_PUE |		\
+	PAD_CTL_PUS_22K_UP  | PAD_CTL_SPEED_LOW |		\
+	PAD_CTL_DSE_80ohm   | PAD_CTL_SRE_FAST  | PAD_CTL_HYS)
+#define PAD_JTAG (PAD_CTL_PKE | PAD_CTL_PUE |		\
+	PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_60ohm)
+#define PAD_JTAG_TDO (PAD_CTL_PKE |		\
+	PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_60ohm | PAD_CTL_SRE_FAST)
+#define PAD_JTAG_MOD (PAD_CTL_PKE | PAD_CTL_PUE |		\
+	PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_60ohm)
+
+static void setup_iomux_uart(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+#ifndef CONFIG_SYS_BOOT_MODE_VERIFIED_LOCKED
+		MX6_PAD_UART2_TX_DATA__UART2_DCE_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
+		MX6_PAD_UART2_RX_DATA__UART2_DCE_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
+		MX6_PAD_UART2_CTS_B__UART2_DCE_CTS | MUX_PAD_CTRL(UART_PAD_CTRL),
+		MX6_PAD_UART2_RTS_B__UART2_DCE_RTS | MUX_PAD_CTRL(UART_PAD_CTRL)
+#else
+		MX6_PAD_UART2_TX_DATA__GPIO1_IO20 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_UART2_RX_DATA__GPIO1_IO21 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_UART2_CTS_B__GPIO1_IO22 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_UART2_RTS_B__GPIO1_IO23 | MUX_PAD_CTRL(WEAK_PULLUP)
+#endif
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_i2c(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+		MX6_PAD_GPIO1_IO02__I2C1_SCL | MUX_PAD_CTRL(I2C_PAD_CTRL),
+		MX6_PAD_GPIO1_IO03__I2C1_SDA | MUX_PAD_CTRL(I2C_PAD_CTRL)
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_mmc(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+		/* microSD */
+		MX6_PAD_SD1_CLK__USDHC1_CLK | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_SD1_CMD__USDHC1_CMD | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_SD1_DATA0__USDHC1_DATA0 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_SD1_DATA1__USDHC1_DATA1 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_SD1_DATA2__USDHC1_DATA2 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_SD1_DATA3__USDHC1_DATA3 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_UART1_RTS_B__USDHC1_CD_B | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		/* eMMC */
+		MX6_PAD_NAND_RE_B__USDHC2_CLK | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_WE_B__USDHC2_CMD | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA00__USDHC2_DATA0 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA01__USDHC2_DATA1 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA02__USDHC2_DATA2 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA03__USDHC2_DATA3 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA04__USDHC2_DATA4 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA05__USDHC2_DATA5 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA06__USDHC2_DATA6 | MUX_PAD_CTRL(USDHC_PAD_CTRL),
+		MX6_PAD_NAND_DATA07__USDHC2_DATA7 | MUX_PAD_CTRL(USDHC_PAD_CTRL)
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_misc(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+		/* type-c */
+		MX6_PAD_GPIO1_IO00__GPIO1_IO00 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_GPIO1_IO01__GPIO1_IO01 | MUX_PAD_CTRL(WEAK_PULLUP),
+		/* crypto */
+		MX6_PAD_ENET2_TX_DATA1__GPIO2_IO12 | MUX_PAD_CTRL(WEAK_PULLUP),
+		/* pmic */
+		MX6_PAD_ENET1_TX_EN__WDOG2_WDOG_RST_B_DEB | MUX_PAD_CTRL(WEAK_PULLUP),
+		/* usb */
+		MX6_PAD_GPIO1_IO05__ANATOP_OTG2_ID | MUX_PAD_CTRL(WEAK_PULLUP)
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_jtag(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+#ifndef CONFIG_SYS_BOOT_MODE_VERIFIED_LOCKED
+		MX6_PAD_JTAG_TMS__SJC_TMS | MUX_PAD_CTRL(PAD_JTAG),
+		MX6_PAD_JTAG_TRST_B__SJC_TRSTB | MUX_PAD_CTRL(PAD_JTAG),
+		MX6_PAD_JTAG_TDI__SJC_TDI | MUX_PAD_CTRL(PAD_JTAG),
+		MX6_PAD_JTAG_TDO__SJC_TDO | MUX_PAD_CTRL(PAD_JTAG_TDO),
+		MX6_PAD_JTAG_TCK__SJC_TCK | MUX_PAD_CTRL(PAD_JTAG),
+		MX6_PAD_JTAG_MOD__SJC_MOD | MUX_PAD_CTRL(PAD_JTAG_MOD),
+#else
+		MX6_PAD_JTAG_TMS__GPIO1_IO11 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_JTAG_TRST_B__GPIO1_IO15 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_JTAG_TDI__GPIO1_IO13 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_JTAG_TDO__GPIO1_IO12 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_JTAG_TCK__GPIO1_IO14 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_JTAG_MOD__GPIO1_IO10 | MUX_PAD_CTRL(WEAK_PULLUP),
+#endif
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_unused_boot(void)
+{
+	static const iomux_v3_cfg_t pads[] = {
+
+		/* pulled-up/pulled-down pads */
+		MX6_PAD_LCD_DATA05__GPIO3_IO10 | MUX_PAD_CTRL(NO_PAD_CTRL),
+		MX6_PAD_LCD_DATA11__GPIO3_IO16 | MUX_PAD_CTRL(NO_PAD_CTRL),
+		MX6_PAD_LCD_DATA14__GPIO3_IO19 | MUX_PAD_CTRL(NO_PAD_CTRL),
+		MX6_PAD_LCD_DATA08__GPIO3_IO13 | MUX_PAD_CTRL(NO_PAD_CTRL),
+
+		/* floating and pulled-up pads */
+		MX6_PAD_LCD_DATA00__GPIO3_IO05 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA01__GPIO3_IO06 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA02__GPIO3_IO07 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA03__GPIO3_IO08 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA04__GPIO3_IO09 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA06__GPIO3_IO11 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA07__GPIO3_IO12 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA09__GPIO3_IO14 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA10__GPIO3_IO15 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA12__GPIO3_IO17 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA13__GPIO3_IO18 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA15__GPIO3_IO20 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA16__GPIO3_IO21 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA17__GPIO3_IO22 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA18__GPIO3_IO23 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA19__GPIO3_IO24 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA20__GPIO3_IO25 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA21__GPIO3_IO26 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA22__GPIO3_IO27 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_DATA23__GPIO3_IO28 | MUX_PAD_CTRL(WEAK_PULLUP)
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static void setup_iomux_unused_nc(void)
+{
+	/* Out of reset values define the pin values before the
+	   ROM is executed so we force all the not connected pins
+	   to a known state */
+	static const iomux_v3_cfg_t pads[] = {
+
+		/* TAMPER pins */
+		MX6_PAD_SNVS_TAMPER0__GPIO5_IO00 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER1__GPIO5_IO01 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER2__GPIO5_IO02 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER3__GPIO5_IO03 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER4__GPIO5_IO04 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER5__GPIO5_IO05 | MUX_PAD_CTRL(WEAK_PULLUP),
+		// FIXME: Configuration of one of the following two pads
+		// disables console UART for some reason.
+		//MX6_PAD_SNVS_TAMPER6__GPIO5_IO06 | MUX_PAD_CTRL(WEAK_PULLUP),
+		//MX6_PAD_SNVS_TAMPER7__GPIO5_IO07 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER8__GPIO5_IO08 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_SNVS_TAMPER9__GPIO5_IO09 | MUX_PAD_CTRL(WEAK_PULLUP),
+
+		/*  ENET block */
+		MX6_PAD_ENET1_RX_DATA0__GPIO2_IO00 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_RX_DATA1__GPIO2_IO01 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_RX_EN__GPIO2_IO02 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_TX_DATA0__GPIO2_IO03 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_TX_DATA1__GPIO2_IO04 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_TX_CLK__GPIO2_IO06 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET1_RX_ER__GPIO2_IO07 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_RX_DATA0__GPIO2_IO08 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_RX_DATA1__GPIO2_IO09 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_RX_EN__GPIO2_IO10 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_TX_DATA0__GPIO2_IO11 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_TX_CLK__GPIO2_IO14 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_ENET2_RX_ER__GPIO2_IO15 | MUX_PAD_CTRL(WEAK_PULLUP),
+
+		/*  CSI block */
+		MX6_PAD_CSI_MCLK__GPIO4_IO17   | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_PIXCLK__GPIO4_IO18 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_VSYNC__GPIO4_IO19  | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_HSYNC__GPIO4_IO20  | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA02__GPIO4_IO23 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA03__GPIO4_IO24 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA04__GPIO4_IO25 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA05__GPIO4_IO26 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA06__GPIO4_IO27 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_CSI_DATA07__GPIO4_IO28 | MUX_PAD_CTRL(WEAK_PULLUP),
+
+		/*  GPIO block */
+		MX6_PAD_GPIO1_IO08__GPIO1_IO08 | MUX_PAD_CTRL(WEAK_PULLUP),
+
+		/*  NAND block */
+		MX6_PAD_NAND_WP_B__GPIO4_IO11 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_NAND_READY_B__GPIO4_IO12 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_NAND_CE0_B__GPIO4_IO13 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_NAND_CE1_B__GPIO4_IO14 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_NAND_DQS__GPIO4_IO16 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_NAND_CLE__GPIO4_IO15 | MUX_PAD_CTRL(WEAK_PULLUP),
+
+		/*  LCD block */
+		MX6_PAD_LCD_CLK__GPIO3_IO00 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_ENABLE__GPIO3_IO01 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_HSYNC__GPIO3_IO02 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_VSYNC__GPIO3_IO03 | MUX_PAD_CTRL(WEAK_PULLUP),
+		MX6_PAD_LCD_RESET__GPIO3_IO04 | MUX_PAD_CTRL(WEAK_PULLUP)
+	};
+
+	imx_iomux_v3_setup_multiple_pads(pads, ARRAY_SIZE(pads));
+}
+
+static struct fsl_esdhc_cfg usdhc_cfg[2] = {
+	{USDHC1_BASE_ADDR},
+	{USDHC2_BASE_ADDR},
+};
+
+int board_mmc_getcd(struct mmc *mmc)
+{
+	return 1;
+}
+
+int board_mmc_init(struct bd_info *bis)
+{
+	int ret = 0;
+
+	usdhc_cfg[0].sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK);
+	usdhc_cfg[1].sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK);
+	ret = fsl_esdhc_initialize(bis, &usdhc_cfg[0]);
+	ret = fsl_esdhc_initialize(bis, &usdhc_cfg[1]);
+
+	return ret;
+}
+
+int board_eth_init(struct bd_info *bis)
+{
+	return usb_eth_initialize(bis);
+}
+
+int dram_init(void)
+{
+	gd->ram_size = imx_ddr_size();
+	return 0;
+}
+
+/* Enable FUSB303 receptacle Type-C controller */
+int fusb303_init(void)
+{
+	int rc;
+	struct udevice *dev = NULL;
+	uchar val;
+
+	rc = i2c_get_chip_for_busnum(0, 0x31, 1, &dev);
+
+	val = 0xbb;
+	dm_i2c_write(dev, 0x5, &val, 1);
+
+	return 0;
+}
+
+int board_early_init_f(void)
+{
+	// i2c initialization should not be moved in dts as otherwise
+	// the fsusb303_init() does not have effect.
+	setup_iomux_i2c();
+	setup_iomux_uart();
+	setup_iomux_mmc();
+	setup_iomux_unused_boot();
+	setup_iomux_unused_nc();
+	setup_iomux_misc();
+	setup_iomux_jtag();
+	return 0;
+}
+
+int board_init(void)
+{
+	fusb303_init();
+	return 0;
+}
+
+int checkboard(void)
+{
+	puts("Board: F-Secure USB armory Mk II\n");
+	return 0;
+}
+
+#ifndef CONFIG_CMDLINE
+static char *ext2_argv[] = {
+	"ext2load",
+	"mmc",
+	USBARMORY_BOOT_DEV ":1",
+	USBARMORY_FIT_ADDR,
+	USBARMORY_FIT_PATH,
+	USBARMORY_FIT_SIZE
+};
+
+static char *bootm_argv[] = {
+	"bootm",
+	USBARMORY_FIT_ADDR "#" USBARMORY_FIT_CONF
+};
+
+int board_run_command(const char *cmdline)
+{
+	if (do_ext2load(NULL, 0, 6, ext2_argv) != 0) {
+		hang();
+	}
+
+	do_bootm(NULL, 0, 2, bootm_argv);
+	hang();
+
+	return 1;
+}
+#endif
