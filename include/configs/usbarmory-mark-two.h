@@ -197,7 +197,6 @@
 	"scriptaddr=0x80800000\0"		\
 	"ramdisk_addr_r=0x83000000\0"		\
 	"optee_addr_r=0x83000000\0"		\
-	"fdt_high=0xffffffff\0"			\
 	"initrd_high=0xffffffff\0"		\
 	"bootfile=zImage\0"			\
 	"opteefile=uTee\0"			\

@@ -613,6 +613,8 @@ config SYS_RELOC_GD_ENV_ADDR
 	  Relocate the early env_addr pointer so we know it is not inside
 	  the binary. Some systems need this and for the rest, it doesn't hurt.
 
+if !TARGET_USBARMORY_MARK_TWO
+
 config SYS_MMC_ENV_DEV
 	int "mmc device number"
 	depends on ENV_IS_IN_MMC || ENV_IS_IN_FAT || SYS_LS_PPA_FW_IN_MMC || \
@@ -620,6 +622,8 @@ config SYS_MMC_ENV_DEV
 	default 0
 	help
 	  MMC device number on the platform where the environment is stored.
+
+endif
 
 config SYS_MMC_ENV_PART
 	int "mmc partition number"
